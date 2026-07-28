@@ -46,6 +46,7 @@ header{background:var(--ink); color:#fff; box-shadow:0 4px 10px rgba(15,23,42,.2
 .modal-bg.show{display:flex}
 .modal-box{background:var(--card); border-radius:14px; max-width:640px; width:100%; box-shadow:0 20px 50px rgba(0,0,0,.35); overflow:hidden; max-height:80vh; display:flex; flex-direction:column;}
 .modal-head{display:flex; align-items:center; justify-content:space-between; gap:10px; padding:14px 18px; background:var(--amber); color:#fff; flex-shrink:0;}
+.modal-head.mh-red{background:var(--red)}
 .modal-head h2{margin:0; font-size:15px; font-weight:900;}
 .modal-head .mh-cnt{font-size:12px; font-weight:700; opacity:.9;}
 .modal-x{background:rgba(255,255,255,.2); border:none; color:#fff; width:28px; height:28px; border-radius:50%; font-size:15px; font-weight:900; cursor:pointer; flex-shrink:0;}
@@ -54,8 +55,11 @@ header{background:var(--ink); color:#fff; box-shadow:0 4px 10px rgba(15,23,42,.2
 .modal-empty{padding:30px 20px; text-align:center; color:var(--mut); font-size:13px;}
 .mrow{display:flex; align-items:center; gap:10px; font-size:12.5px; padding:8px 10px; border-radius:8px; background:#fffbeb; border:1px solid #fde68a; cursor:pointer; transition:.1s;}
 .mrow:hover{background:#fef3c7; border-color:#fcd34d;}
+.mrow.mrow-red{background:var(--red-bg); border-color:#fecaca;}
+.mrow.mrow-red:hover{background:#fecaca}
 .mrow .mr-tech{flex:1; min-width:0; font-weight:700; color:var(--ink2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:12px;}
 .mrow .mr-tech small{display:block; font-weight:500; color:var(--mut); font-size:10.5px;}
+.mrow .mr-days{font-weight:900; font-size:12.5px; color:#991b1b; white-space:nowrap; font-family:'Roboto Mono',monospace;}
 @media(max-width:560px){
   .modal-bg{padding:0; align-items:stretch;}
   .modal-box{max-width:none; border-radius:0; max-height:100vh; height:100%;}
@@ -322,14 +326,14 @@ header{background:var(--ink); color:#fff; box-shadow:0 4px 10px rgba(15,23,42,.2
   </main>
 </div>
 
-<div class="modal-bg" id="crit-modal" onclick="if(event.target===this) closeCritModal()">
+<div class="modal-bg" id="kpi-modal" onclick="if(event.target===this) closeKpiModal()">
   <div class="modal-box">
-    <div class="modal-head">
-      <h2>⏱ Vencen en menos de 1 hora</h2>
-      <span class="mh-cnt" id="crit-modal-cnt"></span>
-      <button class="modal-x" onclick="closeCritModal()" aria-label="Cerrar">✕</button>
+    <div class="modal-head" id="kpi-modal-head">
+      <h2 id="kpi-modal-title">⏱ Vencen en menos de 1 hora</h2>
+      <span class="mh-cnt" id="kpi-modal-cnt"></span>
+      <button class="modal-x" onclick="closeKpiModal()" aria-label="Cerrar">✕</button>
     </div>
-    <div class="modal-list" id="crit-modal-list"></div>
+    <div class="modal-list" id="kpi-modal-list"></div>
   </div>
 </div>
 
@@ -342,6 +346,7 @@ let NOTAS = null;        // Map caso -> Date última modificación
 let dataStamp = null;
 let SORT='name', QUERY='', SELECTED=null;
 let TECHS=[];            // lista ordenada actual (para navegación ‹ ›)
+let LAST_TECHS=[];       // último cálculo completo de técnicos (para los modales de KPIs)
 const REFRESH_MIN = 5;
 // Acordeones: null = automático (abierto en PC, según contenido en móvil)
 let OPEN = { resumen:null, venc:null, asig:null, back:null, stale:null };
@@ -568,9 +573,9 @@ function render(){
   document.getElementById('kpis').innerHTML=
     kpi(g.total,'Casos activos','')+kpi(g.inc,'Incidentes','blue')+kpi(g.wo,'Órdenes','teal')+
     kpi(g.exp,'SLA vencidos','red')+kpi(g.c1,'Vencen < 1h','amber','openCritModal()')+
-    kpi(g.un,'Sin asignar','purple')+kpi(NOTAS?g.stale:'–','Sin actualizar ≥1d', g.stale>0?'red':'green');
-  // si el modal está abierto, refrescar su contenido con los datos nuevos
-  if(document.getElementById('crit-modal').classList.contains('show')) renderCritModal();
+    kpi(g.un,'Sin asignar','purple')+kpi(NOTAS?g.stale:'–','Sin actualizar ≥1d', g.stale>0?'red':'green', NOTAS?'openStaleModal()':null);
+  // si algún modal está abierto, refrescar su contenido con los datos nuevos
+  if(document.getElementById('kpi-modal').classList.contains('show')) renderKpiModal();
 
   // orden + búsqueda de la lista
   const q=norm(QUERY);
@@ -625,12 +630,21 @@ function kpi(v,l,c,onclick){
   return `<div class="${cls}"${onclick?` onclick="${onclick}" role="button" tabindex="0"`:''}><div class="v">${v}</div><div class="l">${l}</div></div>`;
 }
 
-/* ================== MODAL: "Vencen < 1h" (todos los técnicos) ================== */
+/* ================== MODAL genérico de KPIs (Vencen <1h / Sin actualizar) ================== */
+let KPI_MODAL_MODE=null; // 'crit' | 'stale'
+function closeKpiModal(){ document.getElementById('kpi-modal').classList.remove('show'); KPI_MODAL_MODE=null; }
+function renderKpiModal(){
+  if(KPI_MODAL_MODE==='crit') renderCritModal();
+  else if(KPI_MODAL_MODE==='stale') renderStaleModal();
+}
+
 function openCritModal(){
-  document.getElementById('crit-modal').classList.add('show');
+  KPI_MODAL_MODE='crit';
+  document.getElementById('kpi-modal-head').className='modal-head';
+  document.getElementById('kpi-modal-title').textContent='⏱ Vencen en menos de 1 hora';
+  document.getElementById('kpi-modal').classList.add('show');
   renderCritModal();
 }
-function closeCritModal(){ document.getElementById('crit-modal').classList.remove('show'); }
 function renderCritModal(){
   let rows=[];
   LAST_TECHS.forEach(T=>{
@@ -639,10 +653,10 @@ function renderCritModal(){
     });
   });
   rows.sort((a,b)=>a._st.diff-b._st.diff);
-  document.getElementById('crit-modal-cnt').textContent=rows.length+(rows.length===1?' caso':' casos');
-  const el=document.getElementById('crit-modal-list');
+  document.getElementById('kpi-modal-cnt').textContent=rows.length+(rows.length===1?' caso':' casos');
+  const el=document.getElementById('kpi-modal-list');
   el.innerHTML=rows.length?rows.map(t=>{
-    return `<div class="mrow" onclick="selectTech('${esc(t.techName).replace(/'/g,"\\'")}'); closeCritModal();">
+    return `<div class="mrow" onclick="selectTech('${esc(t.techName).replace(/'/g,"\\'")}'); closeKpiModal();">
       <span class="mr-tech">${esc(t.techName)}<small>${esc(t.estado)} · ${esc(t.prioridad)}</small></span>
       <span class="pill ${pillCls(t.estado)}">${t.tipo}</span>
       <span class="tk" onclick="event.stopPropagation(); copyTk('${t.caso}')" title="${esc(t.resumen)}">${t.caso}</span>
@@ -650,7 +664,34 @@ function renderCritModal(){
     </div>`;
   }).join(''):'<div class="modal-empty">🎉 Ningún ticket vence en menos de 1 hora en este momento.</div>';
 }
-document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeCritModal(); });
+
+function openStaleModal(){
+  KPI_MODAL_MODE='stale';
+  document.getElementById('kpi-modal-head').className='modal-head mh-red';
+  document.getElementById('kpi-modal-title').textContent='🔄 Días sin actualizar';
+  document.getElementById('kpi-modal').classList.add('show');
+  renderStaleModal();
+}
+function renderStaleModal(){
+  // Solo tickets con alerta real: ≥1 día sin actualizar y NO en Pendiente
+  // (los Pendiente están programados/en espera y quedan exentos de la actualización diaria)
+  let rows=[];
+  LAST_TECHS.forEach(T=>{
+    T.stale.forEach(t=>rows.push({...t, techName:T.name}));
+  });
+  rows.sort((a,b)=>b._stale.days-a._stale.days);
+  document.getElementById('kpi-modal-cnt').textContent=rows.length+(rows.length===1?' caso':' casos');
+  const el=document.getElementById('kpi-modal-list');
+  el.innerHTML=rows.length?rows.map(t=>{
+    return `<div class="mrow mrow-red" onclick="selectTech('${esc(t.techName).replace(/'/g,"\\'")}'); closeKpiModal();">
+      <span class="mr-tech">${esc(t.techName)}<small>${esc(t.estado)} · ${esc(t.prioridad)}</small></span>
+      <span class="tk" onclick="event.stopPropagation(); copyTk('${t.caso}')" title="${esc(t.resumen)}">${t.caso}</span>
+      <span class="mr-days">hace ${t._stale.label}</span>
+    </div>`;
+  }).join(''):'<div class="modal-empty">🎉 Ningún ticket con actualización pendiente (se excluyen los que están en Pendiente, ya programados).</div>';
+}
+
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeKpiModal(); });
 
 function pillCls(e){const n=norm(e); return n==='pendiente'?'p-pend':n==='asignado'?'p-asig':n==='en curso'?'p-curso':'p-otro';}
 
