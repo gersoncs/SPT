@@ -572,7 +572,7 @@ function render(){
   techs.forEach(T=>{ g.inc+=T.inc; g.wo+=T.wo; g.exp+=T.exp; g.c1+=T.critic1h; if(T.un)g.un=T.tickets.length; g.stale+=T.stale.length; });
   document.getElementById('kpis').innerHTML=
     kpi(g.total,'Casos activos','')+kpi(g.inc,'Incidentes','blue')+kpi(g.wo,'Órdenes','teal')+
-    kpi(g.exp,'SLA vencidos','red','openExpiredModal()')+
+    kpi(g.exp,'SLA vencidos','red')+kpi(g.c1,'Vencen < 1h','amber','openCritModal()')+
     kpi(g.un,'Sin asignar','purple')+kpi(NOTAS?g.stale:'–','Sin actualizar ≥1d', g.stale>0?'red':'green', NOTAS?'openStaleModal()':null);
   // si algún modal está abierto, refrescar su contenido con los datos nuevos
   if(document.getElementById('kpi-modal').classList.contains('show')) renderKpiModal();
@@ -636,7 +636,6 @@ function closeKpiModal(){ document.getElementById('kpi-modal').classList.remove(
 function renderKpiModal(){
   if(KPI_MODAL_MODE==='crit') renderCritModal();
   else if(KPI_MODAL_MODE==='stale') renderStaleModal();
-  else if(KPI_MODAL_MODE==='expired') renderExpiredModal();
 }
 
 function openCritModal(){
@@ -645,62 +644,6 @@ function openCritModal(){
   document.getElementById('kpi-modal-title').textContent='⏱ Vencen en menos de 1 hora';
   document.getElementById('kpi-modal').classList.add('show');
   renderCritModal();
-}
-function openExpiredModal(){
-  KPI_MODAL_MODE='expired';
-  document.getElementById('kpi-modal-head').className='modal-head mh-red';
-  document.getElementById('kpi-modal-title').textContent='🚨 Tickets con SLA vencido';
-  document.getElementById('kpi-modal').classList.add('show');
-  renderExpiredModal();
-}
-
-function renderExpiredModal(){
-  let rows=[];
-
-  LAST_TECHS.forEach(T=>{
-    T.venc.forEach(t=>{
-      if(t._st.exp){
-        rows.push({...t, techName:T.name});
-      }
-    });
-  });
-
-  rows.sort((a,b)=>{
-    const da=a._st.diff ?? 0;
-    const db=b._st.diff ?? 0;
-    return da-db;
-  });
-
-  document.getElementById('kpi-modal-cnt').textContent=
-    rows.length+(rows.length===1?' caso':' casos');
-
-  const el=document.getElementById('kpi-modal-list');
-
-  el.innerHTML=rows.length
-    ? rows.map(t=>`
-      <div class="mrow mrow-red"
-           onclick="selectTech('${esc(t.techName).replace(/'/g,"\\'")}'); closeKpiModal();">
-        <span class="mr-tech">
-          ${esc(t.techName)}
-          <small>${esc(t.estado)} · ${esc(t.prioridad)}</small>
-        </span>
-
-        <span class="pill ${pillCls(t.estado)}">
-          ${t.tipo}
-        </span>
-
-        <span class="tk"
-              onclick="event.stopPropagation(); copyTk('${t.caso}')"
-              title="${esc(t.resumen)}">
-          ${t.caso}
-        </span>
-
-        <span class="mr-days">
-          SLA vencido
-        </span>
-      </div>
-    `).join('')
-    : '<div class="modal-empty">🎉 No hay tickets vencidos.</div>';
 }
 function renderCritModal(){
   let rows=[];
